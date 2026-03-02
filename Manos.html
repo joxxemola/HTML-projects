@@ -54,6 +54,20 @@ const progressBar = document.getElementById("progress-bar");
 const ctxLeft = document.getElementById("canvasLeft").getContext("2d");
 const ctxRight = document.getElementById("canvasRight").getContext("2d");
 
+// contenedor para mensajes de error relacionados con la cámara
+function mostrarErrorCamara(msg) {
+  let err = document.getElementById("error-message");
+  if (!err) {
+    err = document.createElement("div");
+    err.id = "error-message";
+    err.style.color = "#ff4444";
+    err.style.fontWeight = "bold";
+    err.style.margin = "10px";
+    document.body.prepend(err);
+  }
+  err.innerText = msg;
+}
+
 let ultimaLetraConfirmada = "";
 let letraEnProgreso = "";
 let tiempoInicioLetra = 0;
@@ -167,7 +181,22 @@ hands.onResults(results => {
   }
 });
 
-new Camera(video, { onFrame: async () => await hands.send({image: video}), width: 640, height: 480 }).start();
+// Inicializa la cámara con chequeo de permisos y manejo de errores
+async function iniciarCamara() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    mostrarErrorCamara("Su navegador no soporta acceso a la cámara.");
+    return;
+  }
+
+  try {
+    await navigator.mediaDevices.getUserMedia({ video: true });
+    new Camera(video, { onFrame: async () => await hands.send({ image: video }), width: 640, height: 480 }).start();
+  } catch (err) {
+    mostrarErrorCamara("No se pudo iniciar la cámara: " + err.message);
+  }
+}
+
+iniciarCamara();
 </script>
 </body>
 </html>
