@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8">
+    <title>LSC Holístico PRO</title>
+
+    <style>
+      video{position:absolute;opacity:0;}
+      button{padding:10px; border:none; border-radius:6px; font-weight:bold; cursor:pointer;}
+      canvas{border:2px solid #222; border-radius:15px; transform:scaleX(-1); background:#000; box-shadow:0 0 20px rgba(0,255,0,0.15);}
+      body{margin:0;background:#0a0a0f; color:white; font-family:'Segoe UI',sans-serif; display:flex; justify-content:center; align-items:center; height:100vh; overflow:hidden;}
+
+      .M{color:#00e0ff;}
+      .N{color:#00ff88;}
+      .S{color:#ffaa00;}
+      .left{background:#00ffcc;}
+      .right{background:#00ff00;}
+      .botones{display:flex; gap:10px;}
+      .titulo{font-size:0.8em; color:#888;}
+      .btn-espacio{background:#444;color:white;}
+      .btn-borrar{background:#ff2d2d;color:white;}
+      .progress{height:100%; width:0%; transition:width 0.1s;}
+      .estado{background:#222; padding:10px; border-radius:6px; text-align:center;font-weight:bold;}
+      .progress-container{height:8px; background:#333; border-radius:4px; overflow:hidden; display:flex;}
+
+      #main-container{display:flex; gap:20px;}
+      #panel{width:420px; background:#151515; padding:20px; border-radius:15px; border:1px solid #333; display:flex; flex-direction:column;gap:15px;}
+      #frase{font-size:2.3em; min-height:80px; background:#000; padding:15px; border-radius:12px; border:2px solid #2d4bff; word-break:break-word; letter-spacing:3px;}
+
+    </style>
+  </head>
+
+  <body>
+
+    <video id="video"></video>
+
+    <div id="main-container">
+
+      <canvas id="canvas" width="800" height="600"></canvas>
+
+      <div id="panel">
+
+        <div class="titulo">EXPRESIÓN DETECTADA:</div>
+        <div class="estado" id="emocion">NORMAL</div>
+
+        <div class="titulo">TEXTO (LSC):</div>
+        <div id="frase"></div>
+
+        <div class="progress-container">
+          <div class="progress left" id="progressL"></div>
+          <div class="progress right" id="progressR"></div>
+        </div>
+
+        <div class="botones">
+          <button class="btn-espacio" onclick="agregarEspacio()">ESPACIO</button>
+          <button class="btn-borrar" onclick="borrar()">BORRAR</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+    <script>
+      const video=document.getElementById("video");
+      const canvas=document.getElementById("canvas");
+      const ctx=canvas.getContext("2d");
+
+      const fraseDiv=document.getElementById("frase");
+      const progressL=document.getElementById("progressL");
+      const progressR=document.getElementById("progressR");
+
+      let texto="";
+      let estado={
+        LEFT:{letra:"",timer:0,confirmada:""},
+        RIGHT:{letra:"",timer:0,confirmada:""}
+};
+
+      function dist(a,b){ return Math.hypot(a.x-b.x,a.y-b.y);}
+      function tamanoMano(lm){return dist(lm[0],lm[9]);}
+
+      function reconocer(hand,lm){
+        const escala=tamanoMano(lm);
+
+        const dedos={
+          pulgar: hand==="RIGHT"?lm[4].x>lm[3].x:lm[4].x<lm[3].x,
+          indice: lm[8].y<lm[6].y,
+          medio: lm[12].y<lm[10].y,
+          anular: lm[16].y<lm[14].y,
+          menique: lm[20].y<lm[18].y
+        };
+        
+        const d_pi = dist(lm[4], lm[8]) / escala;
+        const d_indice_medio = dist(lm[8], lm[12]) / escala;
+        const total = Object.values(dedos).filter(v=>v).length;
+        
+        // C
+        if(dedos.indice && dedos.medio && dedos.anular && dedos.menique && d_pi > 0.35 && d_pi < 0.65) return "C";
+        // V / U
+        if(dedos.indice && dedos.medio && total === 2){
+          if(d_indice_medio > 0.06) return "V";
+          if(d_indice_medio < 0.035) return "U";
+          return "";
+        }
+        // W
+        if(dedos.indice && dedos.medio && dedos.anular && total===3) return "W";
+        // Y
+        if(dedos.pulgar && dedos.menique && total===2) return "Y";
+        // L
+        if(dedos.pulgar && dedos.indice && total===2) return "L";
+        // F
+        if(d_pi < 0.3 && total >= 3) return "F";
+        // B
+        if(total === 4) return "B";
+
+        // ===== UN SOLO DEDO =====
+        if(dedos.indice && total===1) return "D";
+        if(dedos.menique && total===1) return "I";
+        if(dedos.pulgar && total===1 && lm[8].y > lm[7].y) return "A";
+
+        // ===== MANO CERRADA =====
+
+        if(total === 0){
+          if(d_pi < 0.05) return "O";
+          if(lm[12].y < lm[10].y) return "M";
+          if(lm[8].y < lm[6].y) return "N";
+          return "S";
+        }
+
+      return "";
+
+    }
+
+    function renderTexto(){
+      fraseDiv.innerHTML="";
+      for(let l of texto){
+        let span=document.createElement("span");
+        span.textContent=l;
+        if(l==="M") span.classList.add("M");
+        if(l==="N") span.classList.add("N");
+        if(l==="S") span.classList.add("S");
+        fraseDiv.appendChild(span);
+      }
+    }
+
+    function agregarLetra(l){
+      texto+=l;
+      renderTexto();
+    }
+
+    function agregarEspacio(){
+      texto+=" ";
+      renderTexto();
+    }
+
+    function borrar(){
+      texto=texto.slice(0,-1);
+      renderTexto();
+    }
+
+    const holistic=new Holistic({
+      locateFile:(f)=>`https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${f}`
+    });
+
+    holistic.setOptions({
+      modelComplexity:1,
+      smoothLandmarks:true,
+      minDetectionConfidence:0.7,
+      minTrackingConfidence:0.7
+    });
+
+    holistic.onResults(results=>{
+
+    ctx.save();
+    ctx.clearRect(0,0,800,600);
+    ctx.drawImage(results.image,0,0,800,600);
+
+    function procesarMano(lm,label,progressBar){
+
+      if(!lm){
+        progressBar.style.width="0%";
+        estado[label].letra="";
+        return;
+      }
+
+      drawConnectors(ctx,lm,HAND_CONNECTIONS,{color:'#00FF00',lineWidth:3});
+      drawLandmarks(ctx,lm,{color:'#FF0000',radius:5});
+
+      const letra=reconocer(label,lm);
+
+      if(letra && letra!==estado[label].confirmada){
+
+        if(letra===estado[label].letra){
+
+          let p=(Date.now()-estado[label].timer)/1000;
+          progressBar.style.width=(p*100)+"%";
+
+          ctx.save();
+          ctx.scale(-1,1);
+          ctx.font="bold 50px Segoe UI";
+          ctx.fillStyle="rgba(0,255,0,0.35)";
+          ctx.textAlign="center";
+          ctx.fillText(letra,-400,570);
+          ctx.restore();
+
+          if(p>=1){
+            agregarLetra(letra);
+            estado[label].confirmada=letra;
+          }
+
+        }else{
+          estado[label].letra=letra;
+          estado[label].timer=Date.now();
+        }
+
+      }else if(!letra){
+        estado[label].confirmada="";
+        estado[label].letra="";
+        progressBar.style.width="0%";
+      }
+    }
+
+    procesarMano(results.leftHandLandmarks,"LEFT",progressL);
+    procesarMano(results.rightHandLandmarks,"RIGHT",progressR);
+
+    ctx.restore();
+    });
+
+    new Camera(video,{
+      onFrame:async()=>await holistic.send({image:video}),
+      width:800,
+      height:600
+    }).start();
+
+    </script>
+  </body>
+</html>

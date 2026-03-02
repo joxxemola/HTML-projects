@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>LSC + Detector de Emociones Holístico</title>
+<style>
+  body { margin: 0; background: #050505; color: white; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
+  #canvas-container { position: relative; border: 3px solid #00FF00; border-radius: 15px; overflow: hidden; }
+  canvas { transform: scaleX(-1); background: #000; width: 800px; height: 500px; }
+  video { position: absolute; opacity: 0; }
+  
+  .hud {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(0, 0, 0, 0.8);
+    padding: 20px;
+    border-radius: 10px;
+    border-left: 5px solid #00FF00;
+    min-width: 200px;
+  }
+  .emocion-viva { font-size: 2em; font-weight: bold; color: #00FF00; }
+  .data { color: #888; font-family: monospace; font-size: 0.9em; }
+</style>
+</head>
+<body>
+
+<video id="input_video"></video>
+<div id="canvas-container">
+  <canvas id="output_canvas" width="800" height="500"></canvas>
+  <div class="hud">
+    <div style="font-size: 0.8em; color: #aaa;">EXPRESIÓN FACIAL:</div>
+    <div id="emocion" class="emocion-viva">Detectando...</div>
+    <div id="debug" class="data"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+<script>
+const videoElement = document.getElementById('input_video');
+const canvasElement = document.getElementById('output_canvas');
+const canvasCtx = canvasElement.getContext('2d');
+const emocionDiv = document.getElementById('emocion');
+const debugDiv = document.getElementById('debug');
+
+function calcularDistancia(p1, p2) {
+  return Math.hypot(p1.x - p2.x, p1.y - p2.y);
+}
+
+const holistic = new Holistic({
+  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
+});
+
+holistic.setOptions({
+  modelComplexity: 1,
+  smoothLandmarks: true,
+  minDetectionConfidence: 0.7,
+  minTrackingConfidence: 0.7
+});
+
+holistic.onResults((results) => {
+  canvasCtx.save();
+  canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+  canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+  // --- DIBUJO ---
+  if (results.faceLandmarks) {
+    drawConnectors(canvasCtx, results.faceLandmarks, FACEMESH_TESSELATION, {color: '#C0C0C040', lineWidth: 1});
+    
+    // --- LÓGICA DE EMOCIONES ---
+    const f = results.faceLandmarks;
+    
+    // Puntos clave: 13 (labio sup), 14 (labio inf), 78/308 (comisuras), 10/152 (eje cara)
+    const aperturaBoca = calcularDistancia(f[13], f[14]);
+    const anchoBoca = calcularDistancia(f[78], f[308]);
+    const alturaCejas = (calcularDistancia(f[105], f[33]) + calcularDistancia(f[334], f[263])) / 2;
+
+    let estado = "Neutral";
+    
+    // 1. Sorpresa: Boca abierta y cejas muy arriba
+    if (aperturaBoca > 0.05 && alturaCejas > 0.04) {
+      estado = "Sorprendido 😲";
+    } 
+    // 2. Alegría: Boca ancha (sonrisa)
+    else if (anchoBoca > 0.15) {
+      estado = "Feliz 🙂";
+    }
+    // 3. Enojado / Serio: Cejas bajas
+    else if (alturaCejas < 0.02) {
+      estado = "Serio / Enojado 😠";
+    }
+
+    emocionDiv.innerText = estado;
+    debugDiv.innerHTML = `Boca: ${aperturaBoca.toFixed(3)}<br>Cejas: ${alturaCejas.toFixed(3)}`;
+  }
+
+  // Dibujar manos y cuerpo para mantener la precisión total
+  if (results.poseLandmarks) {
+    drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF0020', lineWidth: 2});
+  }
+  if (results.leftHandLandmarks) {
+    drawConnectors(canvasCtx, results.leftHandLandmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
+  }
+  if (results.rightHandLandmarks) {
+    drawConnectors(canvasCtx, results.rightHandLandmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
+  }
+
+  canvasCtx.restore();
+});
+
+const camera = new Camera(videoElement, {
+  onFrame: async () => { await holistic.send({image: videoElement}); },
+  width: 800, height: 500
+});
+camera.start();
+</script>
+</body>
+</html>
