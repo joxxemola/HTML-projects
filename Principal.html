@@ -2,33 +2,117 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>LSC Escritor Alta Precisión</title>
+<title>LSC Escritor Responsive</title>
+
 <style>
-  body { margin: 0; background: #0b0b0b; color: white; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
-  #main-layout { display: flex; gap: 20px; margin-bottom: 20px; }
-  .bloque { text-align: center; }
-  canvas { border: 3px solid #333; border-radius: 12px; transform: scaleX(-1); background: #000; box-shadow: 0 0 20px rgba(0,255,0,0.1); }
-  video { position: absolute; opacity: 0; }
-  #text-output { width: 660px; background: #1a1a1a; padding: 20px; border-radius: 15px; border-bottom: 5px solid #00FF00; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-  #frase { font-size: 2.5em; color: #00FF00; min-height: 1.2em; word-wrap: break-word; letter-spacing: 5px; margin: 10px 0; background: #000; padding: 15px; border-radius: 8px; font-family: monospace; }
-  #progress-container { width: 100%; height: 10px; background: #333; border-radius: 5px; margin-top: 10px; overflow: hidden; }
-  #progress-bar { width: 0%; height: 100%; background: #00FF00; transition: width 0.1s linear; }
-  .controles { margin-top: 15px; display: flex; gap: 10px; }
-  button { flex: 1; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 1em; transition: 0.2s; text-transform: uppercase; }
-  .btn-borrar { background: #ff4444; color: white; }
-  .btn-espacio { background: #444; color: white; }
-  .letra-actual { font-size: 2.5em; font-weight: bold; color: #00FF00; margin-top: 5px; height: 60px; text-shadow: 0 0 10px rgba(0,255,0,0.5); }
+body {
+  margin: 0;
+  background: #0b0b0b;
+  color: white;
+  font-family: 'Segoe UI', sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+#main-layout {
+  margin: 20px;
+  width: 95%;
+  max-width: 1000px;
+}
+
+canvas {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border: 3px solid #333;
+  border-radius: 12px;
+  transform: scaleX(-1);
+  background: #000;
+  box-shadow: 0 0 20px rgba(0,255,0,0.1);
+}
+
+video {
+  position: absolute;
+  opacity: 0;
+}
+
+.letra-actual {
+  font-size: 2.5em;
+  font-weight: bold;
+  color: #00FF00;
+  text-align: center;
+  margin-top: 10px;
+  height: 60px;
+}
+
+#text-output {
+  width: 95%;
+  max-width: 1000px;
+  background: #1a1a1a;
+  padding: 20px;
+  border-radius: 15px;
+  border-bottom: 5px solid #00FF00;
+  margin-bottom: 30px;
+}
+
+#frase {
+  font-size: 2em;
+  color: #00FF00;
+  min-height: 1.2em;
+  letter-spacing: 5px;
+  background: #000;
+  padding: 15px;
+  border-radius: 8px;
+  font-family: monospace;
+}
+
+#progress-container {
+  width: 100%;
+  height: 10px;
+  background: #333;
+  border-radius: 5px;
+  margin-top: 10px;
+  overflow: hidden;
+}
+
+#progress-bar {
+  width: 0%;
+  height: 100%;
+  background: #00FF00;
+  transition: width 0.1s linear;
+}
+
+.controles {
+  margin-top: 15px;
+  display: flex;
+  gap: 10px;
+}
+
+button {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 1em;
+  text-transform: uppercase;
+}
+
+.btn-borrar { background: #ff4444; color: white; }
+.btn-espacio { background: #444; color: white; }
 </style>
 </head>
+
 <body>
 
 <video id="video" autoplay playsinline></video>
 
 <div id="main-layout">
-  <div class="bloque">
-    <canvas id="canvas" width="640" height="480"></canvas>
-    <div class="letra-actual" id="infoManos">--</div>
-  </div>
+  <canvas id="canvas"></canvas>
+  <div class="letra-actual" id="infoManos">--</div>
 </div>
 
 <div id="text-output">
@@ -45,11 +129,20 @@
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 
 <script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const video = document.getElementById("video");
 const fraseElement = document.getElementById("frase");
 const progressBar = document.getElementById("progress-bar");
-const ctx = document.getElementById("canvas").getContext("2d");
 
-// contenedor para mensajes de error relacionados con la cámara
+function ajustarCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width;
+  canvas.height = rect.height;
+}
+window.addEventListener("resize", ajustarCanvas);
+ajustarCanvas();
+
 function mostrarErrorCamara(msg) {
   let err = document.getElementById("error-message");
   if (!err) {
@@ -68,37 +161,26 @@ let letraEnProgreso = "";
 let tiempoInicioLetra = 0;
 const TIEMPO_REQUERIDO = 1000;
 
-// botones principales: también reinician estados auxiliares para que el progreso y la letra en curso no queden "pegados"
-function limpiarTexto() {
+document.getElementById("btnBorrar").onclick = () => {
   fraseElement.innerText = "";
   progressBar.style.width = "0%";
   ultimaLetraConfirmada = "";
   letraEnProgreso = "";
-}
+};
 
-function agregarEspacio() {
-  // evita que se acumulen espacios consecutivos
-  if (!fraseElement.innerText.endsWith(" ")) {
+document.getElementById("btnEspacio").onclick = () => {
+  if (!fraseElement.innerText.endsWith(" "))
     fraseElement.innerText += " ";
-  }
-  progressBar.style.width = "0%";
-  ultimaLetraConfirmada = "";
-  letraEnProgreso = "";
+};
+
+function dist(p1, p2) {
+  return Math.hypot(p1.x - p2.x, p1.y - p2.y);
 }
 
-document.getElementById("btnBorrar").onclick = limpiarTexto;
-document.getElementById("btnEspacio").onclick = agregarEspacio;
-
-// --- FUNCIONES MATEMÁTICAS ---
-function dist(p1, p2) { return Math.hypot(p1.x - p2.x, p1.y - p2.y); }
-
-function detectarDedosPreciso(lm, hand) {
+function detectarDedos(lm, hand) {
   const esDerecha = hand === "RIGHT";
-  // Pulgar: Tu lógica original corregida para evitar falsos positivos
-  const pulgarExtendido = esDerecha ? lm[4].x > lm[3].x + 0.01 : lm[4].x < lm[3].x - 0.01;
-  
   return {
-    pulgar: pulgarExtendido,
+    pulgar: esDerecha ? lm[4].x > lm[3].x : lm[4].x < lm[3].x,
     indice: lm[8].y < lm[6].y,
     medio: lm[12].y < lm[10].y,
     anular: lm[16].y < lm[14].y,
@@ -106,101 +188,88 @@ function detectarDedosPreciso(lm, hand) {
   };
 }
 
-function obtenerLSCPreciso(d, lm) {
+function obtenerLetra(d, lm) {
   const total = Object.values(d).filter(v => v).length;
-  
-  // Distancias clave
   const d_pulgar_indice = dist(lm[4], lm[8]);
-  const d_pulgar_medio = dist(lm[4], lm[12]);
   const d_indice_medio = dist(lm[8], lm[12]);
 
-  // Letra A: Pulgar afuera, resto muy abajo
-  if (d.pulgar && total === 1 && lm[8].y > lm[7].y) return "A";
-  
-  // Letra B: Dedos rectos y pegados
+  if (d.pulgar && total === 1) return "A";
   if (!d.pulgar && total === 4 && d_indice_medio < 0.04) return "B";
-
-  // Letra L: Forma de L clara
   if (d.pulgar && d.indice && total === 2) return "L";
-
-  // Letra O: Círculo cerrado (todas las puntas cerca del pulgar)
-  if (total === 0 && d_pulgar_indice < 0.05 && d_pulgar_medio < 0.05) return "O";
-
-  // Letra C: Garra abierta
-  if (total === 0 && d_pulgar_indice > 0.07 && lm[8].y < lm[5].y) return "C";
-
-  // Letra I: Solo meñique
   if (d.menique && total === 1) return "I";
-
-  // Letra V vs U
-  if (d.indice && d.medio && total === 2) {
+  if (d.indice && d.medio && total === 2)
     return d_indice_medio > 0.06 ? "V" : "U";
-  }
-
-  // Letra F: Índice y pulgar tocándose, otros arriba
   if (d_pulgar_indice < 0.04 && d.medio && d.anular && d.menique) return "F";
-
-  // Letra Y: Pulgar y meñique
   if (d.pulgar && d.menique && total === 2) return "Y";
-
-  // Letra W
   if (d.indice && d.medio && d.anular && total === 3) return "W";
 
-  return ""; 
+  return "";
 }
 
-/* -------- MEDIAPIPE -------- */
-const hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
-hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.85, minTrackingConfidence: 0.85 });
+const hands = new Hands({
+  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+});
+
+hands.setOptions({
+  maxNumHands: 2,
+  modelComplexity: 1,
+  minDetectionConfidence: 0.85,
+  minTrackingConfidence: 0.85
+});
 
 hands.onResults(results => {
-  ctx.clearRect(0, 0, 640, 480);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-    ctx.drawImage(results.image, 0, 0, 640, 480);
 
-    let letrasDetectadas = [];
+    ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+
+    let letraDetectada = "";
 
     results.multiHandLandmarks.forEach((lm, index) => {
-      const hand = results.multiHandedness[index].label === "Left" ? "RIGHT" : "LEFT";
-      const d = detectarDedosPreciso(lm, hand);
-      const letra = obtenerLSCPreciso(d, lm);
 
-      if (letra) {
-        letrasDetectadas.push(letra);
-      }
+      const handLabel = results.multiHandedness[index].label;
+      const hand = handLabel === "Left" ? "RIGHT" : "LEFT";
+
+      const d = detectarDedos(lm, hand);
+      const letra = obtenerLetra(d, lm);
 
       drawConnectors(ctx, lm, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
       drawLandmarks(ctx, lm, { color: '#FF0000', radius: 2 });
+
+      // 🔥 SOLO ESCRIBE MANO DERECHA
+      if (hand === "RIGHT" && letra) {
+        letraDetectada = letra;
+      }
     });
 
-    const letraFinal = letrasDetectadas.join(" ");
-    document.getElementById("infoManos").innerText = letraFinal || "--";
+    document.getElementById("infoManos").innerText = letraDetectada || "--";
 
-    // Lógica de escritura
-    if (letraFinal && letraFinal !== ultimaLetraConfirmada) {
-      if (letraFinal === letraEnProgreso) {
+    if (letraDetectada && letraDetectada !== ultimaLetraConfirmada) {
+
+      if (letraDetectada === letraEnProgreso) {
+
         let p = ((Date.now() - tiempoInicioLetra) / TIEMPO_REQUERIDO) * 100;
         progressBar.style.width = Math.min(p, 100) + "%";
+
         if (p >= 100) {
-          fraseElement.innerText += letraFinal + " ";
-          ultimaLetraConfirmada = letraFinal;
+          fraseElement.innerText += letraDetectada;
+          ultimaLetraConfirmada = letraDetectada;
         }
+
       } else {
-        letraEnProgreso = letraFinal;
+        letraEnProgreso = letraDetectada;
         tiempoInicioLetra = Date.now();
       }
-    } else {
-      if (!letraFinal) {
-        letraEnProgreso = "";
-        ultimaLetraConfirmada = "";
-        progressBar.style.width = "0%";
-      }
+
+    } else if (!letraDetectada) {
+      letraEnProgreso = "";
+      ultimaLetraConfirmada = "";
+      progressBar.style.width = "0%";
     }
   }
 });
 
-// Inicializa la cámara con chequeo de permisos y manejo de errores
 async function iniciarCamara() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     mostrarErrorCamara("Su navegador no soporta acceso a la cámara.");
@@ -209,7 +278,13 @@ async function iniciarCamara() {
 
   try {
     await navigator.mediaDevices.getUserMedia({ video: true });
-    new Camera(video, { onFrame: async () => await hands.send({ image: video }), width: 640, height: 480 }).start();
+
+    new Camera(video, {
+      onFrame: async () => await hands.send({ image: video }),
+      width: canvas.width,
+      height: canvas.height
+    }).start();
+
   } catch (err) {
     mostrarErrorCamara("No se pudo iniciar la cámara: " + err.message);
   }
