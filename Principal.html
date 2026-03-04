@@ -1,296 +1,296 @@
 <!DOCTYPE html>
 <html lang="es">
-<head>
-<meta charset="UTF-8">
-<title>LSC Escritor Responsive</title>
+  <head>
+    <meta charset="UTF-8">
+    <title>Lenguaje de señas</title>
 
-<style>
-body {
-  margin: 0;
-  background: #0b0b0b;
-  color: white;
-  font-family: 'Segoe UI', sans-serif;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-}
-
-#main-layout {
-  margin: 20px;
-  width: 95%;
-  max-width: 1000px;
-}
-
-canvas {
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  border: 3px solid #333;
-  border-radius: 12px;
-  transform: scaleX(-1);
-  background: #000;
-  box-shadow: 0 0 20px rgba(0,255,0,0.1);
-}
-
-video {
-  position: absolute;
-  opacity: 0;
-}
-
-.letra-actual {
-  font-size: 2.5em;
-  font-weight: bold;
-  color: #00FF00;
-  text-align: center;
-  margin-top: 10px;
-  height: 60px;
-}
-
-#text-output {
-  width: 95%;
-  max-width: 1000px;
-  background: #1a1a1a;
-  padding: 20px;
-  border-radius: 15px;
-  border-bottom: 5px solid #00FF00;
-  margin-bottom: 30px;
-}
-
-#frase {
-  font-size: 2em;
-  color: #00FF00;
-  min-height: 1.2em;
-  letter-spacing: 5px;
-  background: #000;
-  padding: 15px;
-  border-radius: 8px;
-  font-family: monospace;
-}
-
-#progress-container {
-  width: 100%;
-  height: 10px;
-  background: #333;
-  border-radius: 5px;
-  margin-top: 10px;
-  overflow: hidden;
-}
-
-#progress-bar {
-  width: 0%;
-  height: 100%;
-  background: #00FF00;
-  transition: width 0.1s linear;
-}
-
-.controles {
-  margin-top: 15px;
-  display: flex;
-  gap: 10px;
-}
-
-button {
-  flex: 1;
-  padding: 12px;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: bold;
-  font-size: 1em;
-  text-transform: uppercase;
-}
-
-.btn-borrar { background: #ff4444; color: white; }
-.btn-espacio { background: #444; color: white; }
-</style>
-</head>
-
-<body>
-
-<video id="video" autoplay playsinline></video>
-
-<div id="main-layout">
-  <canvas id="canvas"></canvas>
-  <div class="letra-actual" id="infoManos">--</div>
-</div>
-
-<div id="text-output">
-  <div id="frase"></div>
-  <div id="progress-container"><div id="progress-bar"></div></div>
-  <div class="controles">
-    <button class="btn-espacio" id="btnEspacio">Espacio</button>
-    <button class="btn-borrar" id="btnBorrar">Borrar Todo</button>
-  </div>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
-
-<script>
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
-const video = document.getElementById("video");
-const fraseElement = document.getElementById("frase");
-const progressBar = document.getElementById("progress-bar");
-
-function ajustarCanvas() {
-  const rect = canvas.getBoundingClientRect();
-  canvas.width = rect.width;
-  canvas.height = rect.height;
-}
-window.addEventListener("resize", ajustarCanvas);
-ajustarCanvas();
-
-function mostrarErrorCamara(msg) {
-  let err = document.getElementById("error-message");
-  if (!err) {
-    err = document.createElement("div");
-    err.id = "error-message";
-    err.style.color = "#ff4444";
-    err.style.fontWeight = "bold";
-    err.style.margin = "10px";
-    document.body.prepend(err);
-  }
-  err.innerText = msg;
-}
-
-let ultimaLetraConfirmada = "";
-let letraEnProgreso = "";
-let tiempoInicioLetra = 0;
-const TIEMPO_REQUERIDO = 1000;
-
-document.getElementById("btnBorrar").onclick = () => {
-  fraseElement.innerText = "";
-  progressBar.style.width = "0%";
-  ultimaLetraConfirmada = "";
-  letraEnProgreso = "";
-};
-
-document.getElementById("btnEspacio").onclick = () => {
-  if (!fraseElement.innerText.endsWith(" "))
-    fraseElement.innerText += " ";
-};
-
-function dist(p1, p2) {
-  return Math.hypot(p1.x - p2.x, p1.y - p2.y);
-}
-
-function detectarDedos(lm, hand) {
-  const esDerecha = hand === "RIGHT";
-  return {
-    pulgar: esDerecha ? lm[4].x > lm[3].x : lm[4].x < lm[3].x,
-    indice: lm[8].y < lm[6].y,
-    medio: lm[12].y < lm[10].y,
-    anular: lm[16].y < lm[14].y,
-    menique: lm[20].y < lm[18].y
-  };
-}
-
-function obtenerLetra(d, lm) {
-  const total = Object.values(d).filter(v => v).length;
-  const d_pulgar_indice = dist(lm[4], lm[8]);
-  const d_indice_medio = dist(lm[8], lm[12]);
-
-  if (d.pulgar && total === 1) return "A";
-  if (!d.pulgar && total === 4 && d_indice_medio < 0.04) return "B";
-  if (d.pulgar && d.indice && total === 2) return "L";
-  if (d.menique && total === 1) return "I";
-  if (d.indice && d.medio && total === 2)
-    return d_indice_medio > 0.06 ? "V" : "U";
-  if (d_pulgar_indice < 0.04 && d.medio && d.anular && d.menique) return "F";
-  if (d.pulgar && d.menique && total === 2) return "Y";
-  if (d.indice && d.medio && d.anular && total === 3) return "W";
-
-  return "";
-}
-
-const hands = new Hands({
-  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
-});
-
-hands.setOptions({
-  maxNumHands: 2,
-  modelComplexity: 1,
-  minDetectionConfidence: 0.85,
-  minTrackingConfidence: 0.85
-});
-
-hands.onResults(results => {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-
-    ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
-
-    let letraDetectada = "";
-
-    results.multiHandLandmarks.forEach((lm, index) => {
-
-      const handLabel = results.multiHandedness[index].label;
-      const hand = handLabel === "Left" ? "RIGHT" : "LEFT";
-
-      const d = detectarDedos(lm, hand);
-      const letra = obtenerLetra(d, lm);
-
-      drawConnectors(ctx, lm, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
-      drawLandmarks(ctx, lm, { color: '#FF0000', radius: 2 });
-
-      // 🔥 SOLO ESCRIBE MANO DERECHA
-      if (hand === "RIGHT" && letra) {
-        letraDetectada = letra;
+    <style>
+      body {
+        margin: 0;
+        background: #0b0b0b;
+        color: white;
+        font-family: 'Segoe UI', sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
       }
-    });
 
-    document.getElementById("infoManos").innerText = letraDetectada || "--";
+      #main-layout {
+        margin: 20px;
+        width: 95%;
+        max-width: 1000px;
+      }
 
-    if (letraDetectada && letraDetectada !== ultimaLetraConfirmada) {
+      canvas {
+        width: 100%;
+        aspect-ratio: 4 / 3;
+        border: 3px solid #333;
+        border-radius: 12px;
+        transform: scaleX(-1);
+        background: #000;
+        box-shadow: 0 0 20px rgba(0,255,0,0.1);
+      }
 
-      if (letraDetectada === letraEnProgreso) {
+      video {
+        position: absolute;
+        opacity: 0;
+      }
 
-        let p = ((Date.now() - tiempoInicioLetra) / TIEMPO_REQUERIDO) * 100;
-        progressBar.style.width = Math.min(p, 100) + "%";
+      .letra-actual {
+        font-size: 2.5em;
+        font-weight: bold;
+        color: #00FF00;
+        text-align: center;
+        margin-top: 10px;
+        height: 60px;
+      }
 
-        if (p >= 100) {
-          fraseElement.innerText += letraDetectada;
-          ultimaLetraConfirmada = letraDetectada;
+      #text-output {
+        width: 95%;
+        max-width: 1000px;
+        background: #1a1a1a;
+        padding: 20px;
+        border-radius: 15px;
+        border-bottom: 5px solid #00FF00;
+        margin-bottom: 30px;
+      }
+
+      #frase {
+        font-size: 2em;
+        color: #00FF00;
+        min-height: 1.2em;
+        letter-spacing: 5px;
+        background: #000;
+        padding: 15px;
+        border-radius: 8px;
+        font-family: monospace;
+      }
+
+      #progress-container {
+        width: 100%;
+        height: 10px;
+        background: #333;
+        border-radius: 5px;
+        margin-top: 10px;
+        overflow: hidden;
+      }
+
+      #progress-bar {
+        width: 0%;
+        height: 100%;
+        background: #00FF00;
+        transition: width 0.1s linear;
+      }
+
+      .controles {
+        margin-top: 15px;
+        display: flex;
+        gap: 10px;
+      }
+
+      button {
+        flex: 1;
+        padding: 12px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: bold;
+        font-size: 1em;
+        text-transform: uppercase;
+      }
+
+      .btn-borrar { background: #ff4444; color: white; }
+      .btn-espacio { background: #444; color: white; }
+    </style>
+  </head>
+
+  <body>
+
+    <video id="video" autoplay playsinline></video>
+
+    <div id="main-layout">
+      <canvas id="canvas"></canvas>
+      <div class="letra-actual" id="infoManos">--</div>
+    </div>
+
+    <div id="text-output">
+      <div id="frase"></div>
+      <div id="progress-container"><div id="progress-bar"></div></div>
+      <div class="controles">
+        <button class="btn-espacio" id="btnEspacio">Espacio</button>
+        <button class="btn-borrar" id="btnBorrar">Borrar Todo</button>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+    <script>
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+      const video = document.getElementById("video");
+      const fraseElement = document.getElementById("frase");
+      const progressBar = document.getElementById("progress-bar");
+
+      function ajustarCanvas() {
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+      }
+      window.addEventListener("resize", ajustarCanvas);
+      ajustarCanvas();
+
+      function mostrarErrorCamara(msg) {
+        let err = document.getElementById("error-message");
+        if (!err) {
+          err = document.createElement("div");
+          err.id = "error-message";
+          err.style.color = "#ff4444";
+          err.style.fontWeight = "bold";
+          err.style.margin = "10px";
+          document.body.prepend(err);
+        }
+        err.innerText = msg;
+      }
+
+      let ultimaLetraConfirmada = "";
+      let letraEnProgreso = "";
+      let tiempoInicioLetra = 0;
+      const TIEMPO_REQUERIDO = 1000;
+
+      document.getElementById("btnBorrar").onclick = () => {
+        fraseElement.innerText = "";
+        progressBar.style.width = "0%";
+        ultimaLetraConfirmada = "";
+        letraEnProgreso = "";
+      };
+
+      document.getElementById("btnEspacio").onclick = () => {
+        if (!fraseElement.innerText.endsWith(" "))
+          fraseElement.innerText += " ";
+      };
+
+      function dist(p1, p2) {
+        return Math.hypot(p1.x - p2.x, p1.y - p2.y);
+      }
+
+      function detectarDedos(lm, hand) {
+        const esDerecha = hand === "RIGHT";
+        return {
+          pulgar: esDerecha ? lm[4].x > lm[3].x : lm[4].x < lm[3].x,
+          indice: lm[8].y < lm[6].y,
+          medio: lm[12].y < lm[10].y,
+          anular: lm[16].y < lm[14].y,
+          menique: lm[20].y < lm[18].y
+        };
+      }
+
+      function obtenerLetra(d, lm) {
+        const total = Object.values(d).filter(v => v).length;
+        const d_pulgar_indice = dist(lm[4], lm[8]);
+        const d_indice_medio = dist(lm[8], lm[12]);
+
+        if (d.pulgar && total === 1) return "A";
+        if (!d.pulgar && total === 4 && d_indice_medio < 0.04) return "B";
+        if (d.pulgar && d.indice && total === 2) return "L";
+        if (d.menique && total === 1) return "I";
+        if (d.indice && d.medio && total === 2)
+          return d_indice_medio > 0.06 ? "V" : "U";
+        if (d_pulgar_indice < 0.04 && d.medio && d.anular && d.menique) return "F";
+        if (d.pulgar && d.menique && total === 2) return "Y";
+        if (d.indice && d.medio && d.anular && total === 3) return "W";
+
+        return "";
+      }
+
+      const hands = new Hands({
+        locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+      });
+
+      hands.setOptions({
+        maxNumHands: 2,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.85,
+        minTrackingConfidence: 0.85
+      });
+
+      hands.onResults(results => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+
+          ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+
+          let letraDetectada = "";
+
+          results.multiHandLandmarks.forEach((lm, index) => {
+
+            const handLabel = results.multiHandedness[index].label;
+            const hand = handLabel === "Left" ? "RIGHT" : "LEFT";
+
+            const d = detectarDedos(lm, hand);
+            const letra = obtenerLetra(d, lm);
+
+            drawConnectors(ctx, lm, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 4 });
+            drawLandmarks(ctx, lm, { color: '#FF0000', radius: 2 });
+
+            // 🔥 SOLO ESCRIBE MANO DERECHA
+            if (hand === "RIGHT" && letra) {
+              letraDetectada = letra;
+            }
+          });
+
+          document.getElementById("infoManos").innerText = letraDetectada || "--";
+
+          if (letraDetectada && letraDetectada !== ultimaLetraConfirmada) {
+
+            if (letraDetectada === letraEnProgreso) {
+
+              let p = ((Date.now() - tiempoInicioLetra) / TIEMPO_REQUERIDO) * 100;
+              progressBar.style.width = Math.min(p, 100) + "%";
+
+              if (p >= 100) {
+                fraseElement.innerText += letraDetectada;
+                ultimaLetraConfirmada = letraDetectada;
+              }
+
+            } else {
+              letraEnProgreso = letraDetectada;
+              tiempoInicioLetra = Date.now();
+            }
+
+          } else if (!letraDetectada) {
+            letraEnProgreso = "";
+            ultimaLetraConfirmada = "";
+            progressBar.style.width = "0%";
+          }
+        }
+      });
+
+      async function iniciarCamara() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          mostrarErrorCamara("Su navegador no soporta acceso a la cámara.");
+          return;
         }
 
-      } else {
-        letraEnProgreso = letraDetectada;
-        tiempoInicioLetra = Date.now();
+        try {
+          await navigator.mediaDevices.getUserMedia({ video: true });
+
+          new Camera(video, {
+            onFrame: async () => await hands.send({ image: video }),
+            width: canvas.width,
+            height: canvas.height
+          }).start();
+
+        } catch (err) {
+          mostrarErrorCamara("No se pudo iniciar la cámara: " + err.message);
+        }
       }
 
-    } else if (!letraDetectada) {
-      letraEnProgreso = "";
-      ultimaLetraConfirmada = "";
-      progressBar.style.width = "0%";
-    }
-  }
-});
-
-async function iniciarCamara() {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    mostrarErrorCamara("Su navegador no soporta acceso a la cámara.");
-    return;
-  }
-
-  try {
-    await navigator.mediaDevices.getUserMedia({ video: true });
-
-    new Camera(video, {
-      onFrame: async () => await hands.send({ image: video }),
-      width: canvas.width,
-      height: canvas.height
-    }).start();
-
-  } catch (err) {
-    mostrarErrorCamara("No se pudo iniciar la cámara: " + err.message);
-  }
-}
-
-iniciarCamara();
-</script>
-</body>
+      iniciarCamara();
+    </script>
+  </body>
 </html>
